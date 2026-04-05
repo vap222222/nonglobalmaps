@@ -52,7 +52,7 @@ async def main():
         servers = await fetch_servers(session)
 
         # Collect unique non-global maps that are actually running
-        non_global_maps = set()
+        non_global_maps = {}  # map_name -> server address
         for server in servers:
             a2s = server.get('a2s_info')
             if not a2s:
@@ -60,7 +60,9 @@ async def main():
             current_map = a2s.get('current_map', '')
             map_info = a2s.get('current_map_info')
             if current_map and map_info is None:
-                non_global_maps.add(current_map)
+                host = server.get('host', '')
+                port = server.get('port', '')
+                non_global_maps[current_map] = f'{host}:{port}'
 
         print(f'Non-global maps currently running: {non_global_maps}')
 
@@ -79,10 +81,11 @@ async def main():
         # Send telegram if anything new is missing
         if newly_missing:
             if len(newly_missing) == 1:
-                msg = f'🗺 Missing map image: <code>{newly_missing[0]}</code>'
+                map_name = newly_missing[0]
+                msg = f'{map_name}, {non_global_maps[map_name]}'
             else:
-                maps_list = '\n'.join(f'• <code>{m}</code>' for m in newly_missing)
-                msg = f'🗺 Missing map images ({len(newly_missing)}):\n\n{maps_list}'
+                maps_list = '\n'.join(f'{m}, {non_global_maps[m]}' for m in newly_missing)
+                msg = maps_list
             await send_telegram(session, msg)
             reported.update(newly_missing)
             save_reported(reported)
