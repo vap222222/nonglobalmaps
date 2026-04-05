@@ -1,0 +1,57 @@
+name: map-image-checker
+run-name: Map Image Checker
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'  # Every 10 minutes
+
+jobs:
+  check:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install aiohttp
+
+      - name: Restore cache
+        uses: actions/cache/restore@v3
+        with:
+          path: reported_maps.json
+          key: map-checker-data-dummy
+          restore-keys: |
+            map-checker-data-
+
+      - name: Run checker
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python check_maps.py
+
+      - name: Save cache
+        uses: actions/cache/save@v3
+        with:
+          path: reported_maps.json
+          key: map-checker-data-${{ github.run_number }}-${{ github.run_attempt }}
+
+      - name: Cleanup old caches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/caches --paginate \
+            | jq -r '.actions_caches[] | select(.key | startswith("map-checker-data-")) | "\(.id) \(.key)"' > cache_list.txt
+
+          while read -r cache_id cache_key; do
+            if [ "$cache_key" != "map-checker-data-${{ github.run_number }}-${{ github.run_attempt }}" ]; then
+              echo "Deleting: $cache_key"
+              gh api --method DELETE repos/${{ github.repository }}/actions/caches/$cache_id || true
+            fi
+          done < cache_list.txt
